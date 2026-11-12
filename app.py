@@ -4,11 +4,7 @@ Stock Price Scenario Simulator
 Interactive Streamlit app that generates thousands of hypothetical
 future stock price paths using Geometric Brownian Motion.
 
-Run locally:
-    streamlit run app.py
-
-Deploy:
-    Push to GitHub, connect repo to Streamlit Cloud.
+Optimized for Streamlit Community Cloud to prevent CPU throttling.
 """
 
 import numpy as np
@@ -53,7 +49,7 @@ T = st.sidebar.slider(
     "Time Horizon T (years)", 0.1, 5.0, DEFAULT_T, 0.1,
 )
 steps = st.sidebar.slider(
-    "Time Steps", 50, 1000, DEFAULT_STEPS, 1,
+    "Time Steps", 50, 252, DEFAULT_STEPS, 1,
 )
 n_paths = st.sidebar.slider(
     "Number of Simulated Paths", 100, MAX_PATHS, DEFAULT_N_PATHS, 100,
@@ -71,10 +67,14 @@ st.sidebar.markdown("**Model:** GBM / Itô process")
 st.sidebar.markdown("**Method:** Monte Carlo (exact discrete solution)")
 
 # ----------------------------------------------------------------------
-# Simulate
+# Simulate (Optimized with TTL Cache to prevent memory overload)
 # ----------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def run_simulation(S0, mu, sigma, T, steps, n_paths, seed):
+    return simulate_gbm(S0, mu, sigma, T, steps, n_paths, seed)
+
 with st.spinner("Running Monte Carlo simulation..."):
-    time_grid, paths = simulate_gbm(S0, mu, sigma, T, steps, n_paths, seed)
+    time_grid, paths = run_simulation(S0, mu, sigma, T, steps, n_paths, seed)
 
 terminal = paths[:, -1]
 
@@ -104,7 +104,8 @@ st.markdown("---")
 # ----------------------------------------------------------------------
 st.subheader("Simulated Price Paths")
 
-max_display = min(MAX_DISPLAYED_PATHS, n_paths)
+# Show only a maximum of 100 paths on the graph to keep browser light
+max_display = min(MAX_DISPLAYED_PATHS, 100, n_paths)
 fig_paths = go.Figure()
 
 for i in range(max_display):
@@ -146,7 +147,7 @@ fig_paths.update_layout(
     legend=dict(orientation="h", y=1.02),
 )
 st.plotly_chart(fig_paths, use_container_width=True)
-st.caption(f"Showing {max_display} of {n_paths} simulated paths.")
+st.caption(f"Showing {max_display} of {n_paths} simulated paths (Optimized for performance).")
 
 # ----------------------------------------------------------------------
 # Chart 2: terminal distribution
@@ -163,7 +164,7 @@ fig_hist.add_vline(x=S0, line_dash="dash", line_color="black",
                    annotation_text="S₀", annotation_position="top")
 fig_hist.add_vline(x=metrics["q05"], line_dash="dot", line_color="red",
                    annotation_text="5% VaR", annotation_position="top right")
-fig_hist.add_vline(x=metrics["q95"] if "q95" in metrics else np.quantile(terminal, 0.95),
+fig_hist.add_vline(x=np.quantile(terminal, 0.95),
                    line_dash="dot", line_color="green",
                    annotation_text="95% quantile", annotation_position="top left")
 fig_hist.update_layout(
